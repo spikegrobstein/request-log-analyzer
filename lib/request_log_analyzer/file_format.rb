@@ -1,3 +1,4 @@
+require 'pry'
 require 'request_log_analyzer/request'
 
 module RequestLogAnalyzer::FileFormat
@@ -19,6 +20,8 @@ module RequestLogAnalyzer::FileFormat
   autoload :AmazonS3,         'request_log_analyzer/file_format/amazon_s3'
   autoload :W3c,              'request_log_analyzer/file_format/w3c'
   autoload :Haproxy,          'request_log_analyzer/file_format/haproxy'
+
+  autoload :TeNginx,          'request_log_analyzer/file_format/te_nginx'
 
   # Loads a FileFormat::Base subclass instance.
   # You can provide:
@@ -60,14 +63,14 @@ module RequestLogAnalyzer::FileFormat
 
     @current_file_format = klass.create(*args) # return an instance of the class
   end
-  
+
   # Returns an array of all FileFormat instances that are shipped with request-log-analyzer by default.
   def self.all_formats
-    @all_formats ||= Dir[File.expand_path('file_format/*.rb', File.dirname(__FILE__))].map do |file| 
-      self.load(File.basename(file, '.rb')) 
+    @all_formats ||= Dir[File.expand_path('file_format/*.rb', File.dirname(__FILE__))].map do |file|
+      self.load(File.basename(file, '.rb'))
     end
   end
-  
+
   # Autodetects the filetype of a given file.
   #
   # Returns a FileFormat instance, by parsing the first couple of lines of the provided file
@@ -77,18 +80,18 @@ module RequestLogAnalyzer::FileFormat
   # <tt>file</tt>:: The file to detect the file format for.
   # <tt>line_count</tt>:: The number of lines to take into consideration
   def self.autodetect(file, line_count = 50)
-    
+
     parsers = all_formats.map { |f| RequestLogAnalyzer::Source::LogParser.new(f, :parse_strategy => 'cautious') }
-    
+
     File.open(file, 'rb') do |io|
       while io.lineno < line_count && (line = io.gets)
-        parsers.each { |parser| parser.parse_line(line) } 
+        parsers.each { |parser| parser.parse_line(line) }
       end
     end
-    
+
     parsers.select { |p| autodetect_score(p) > 0 }.max { |a, b| autodetect_score(a) <=> autodetect_score(b) }.file_format rescue nil
   end
-  
+
   # Calculates a file format auto detection score based on the parser statistics.
   #
   # This method returns a score as an integer. Usually, the score will increase as more
@@ -112,7 +115,7 @@ module RequestLogAnalyzer::FileFormat
   # This module contains some methods to construct regular expressions for log fragments
   # that are commonly used, like IP addresses and timestamp.
   #
-  # You need to extend (or include in an unlikely case) this module in your file format 
+  # You need to extend (or include in an unlikely case) this module in your file format
   # to use these regular expression constructors.
   module CommonRegularExpressions
 
@@ -125,13 +128,13 @@ module RequestLogAnalyzer::FileFormat
       'Z' => '(?:[+-]\d{4}|[A-Z]{3,4})',
       '%' => '%'
     }
-    
+
     # Creates a regular expression to match a hostname
     def hostname(blank = false)
       regexp = /(?:(?:[a-zA-Z]|[a-zA-Z][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*(?:[A-Za-z]|[A-Za-z][A-Za-z0-9\-]*[A-Za-z0-9])/
       add_blank_option(regexp, blank)
     end
-    
+
     # Creates a regular expression to match a hostname or ip address
     def hostname_or_ip_address(blank = false)
       regexp = Regexp.union(hostname, ip_address)
@@ -160,11 +163,11 @@ module RequestLogAnalyzer::FileFormat
 
     # Construct a regular expression to parse IPv4 and IPv6 addresses.
     #
-    # Allow nil values if the blank option is given. This can be true to 
+    # Allow nil values if the blank option is given. This can be true to
     # allow an empty string or to a string substitute for the nil value.
     def ip_address(blank = false)
 
-      # IP address regexp copied from Resolv::IPv4 and Resolv::IPv6, 
+      # IP address regexp copied from Resolv::IPv4 and Resolv::IPv6,
       # but adjusted to work for the purpose of request-log-analyzer.
       ipv4_regexp                     = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/
       ipv6_regex_8_hex                = /(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}/
@@ -175,14 +178,14 @@ module RequestLogAnalyzer::FileFormat
 
       add_blank_option(Regexp.union(ipv4_regexp, ipv6_regexp), blank)
     end
-    
+
     def anchored(regexp)
       /^#{regexp}$/
     end
-    
+
     protected
-    
-    # Allow the field to be blank if this option is given. This can be true to 
+
+    # Allow the field to be blank if this option is given. This can be true to
     # allow an empty string or a string alternative for the nil value.
     def add_blank_option(regexp, blank)
       case blank
@@ -270,16 +273,16 @@ module RequestLogAnalyzer::FileFormat
     def well_formed?
       valid_line_definitions? && valid_request_class?
     end
-    
+
     alias_method :valid?, :well_formed?
-  
+
 
     # Checks whether the line definitions form a valid language.
-    # A file format should have at least a header and a footer line type    
+    # A file format should have at least a header and a footer line type
     def valid_line_definitions?
       line_definitions.any? { |(_, ld)| ld.header } && line_definitions.any? { |(_, ld)| ld.footer }
     end
-    
+
     # Checks whether the request class inherits from the base Request class.
     def valid_request_class?
       request_class.ancestors.include?(RequestLogAnalyzer::Request)
@@ -304,12 +307,12 @@ module RequestLogAnalyzer::FileFormat
 
       return nil
     end
-    
+
     # Returns the max line length for this file format if any.
     def max_line_length
       self.class.const_get(MAX_LINE_LENGTH) if self.class.const_defined?(:MAX_LINE_LENGTH)
     end
-    
+
     def line_divider
       self.class.const_get(LINE_DIVIDER) if self.class.const_defined?(:LINE_DIVIDER)
     end
